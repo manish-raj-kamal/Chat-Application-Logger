@@ -437,7 +437,7 @@ function createWelcomeState() {
     div.innerHTML = `
         <div class="welcome-icon"><i class="fas fa-paper-plane"></i></div>
         <h2>Welcome to ChatApp Logger</h2>
-        <p>Messages are encrypted & stored in a FIFO Queue (max 10 per conversation).<br>Start typing to begin!</p>
+        <p>Messages are encrypted & stored permanently. The Queue shows the last 10.<br>Start typing to begin!</p>
     `;
     return div;
 }
@@ -518,9 +518,11 @@ function updateQueueVisualization() {
     const countBadge = document.getElementById('queueCount');
     const messages = Array.from(messageMap.values());
 
-    countBadge.textContent = messages.length;
+    // Badge shows how many are in the queue view (last 10)
+    const queueMessages = messages.slice(-10);
+    countBadge.textContent = queueMessages.length;
 
-    const displayMessages = messages.slice(-8);
+    const displayMessages = queueMessages.slice(-10);
 
     if (displayMessages.length === 0) {
         visual.innerHTML = `

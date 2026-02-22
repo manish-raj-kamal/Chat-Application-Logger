@@ -238,29 +238,8 @@ app.post('/api/send', auth, async (req, res) => {
             chatType,
         });
 
-        // ── FIFO Queue: keep last MAX_QUEUE_SIZE per conversation ──
-        let countQuery;
-        if (chatType === 'global') {
-            countQuery = { chatType: 'global' };
-        } else {
-            countQuery = {
-                chatType: 'private',
-                $or: [
-                    { from: userEmail, to: toField },
-                    { from: toField, to: userEmail },
-                ],
-            };
-        }
-
-        const count = await Chat.countDocuments(countQuery);
-        if (count > MAX_QUEUE_SIZE) {
-            const excess = count - MAX_QUEUE_SIZE;
-            const oldest = await Chat.find(countQuery)
-                .sort({ timestamp: 1 })
-                .limit(excess)
-                .select('_id');
-            await Chat.deleteMany({ _id: { $in: oldest.map(m => m._id) } });
-        }
+        // All messages are kept in the database.
+        // The Queue visualization (last 10) is handled in the frontend only.
 
         res.json({
             success: true,
