@@ -12,6 +12,11 @@
     ],
     "routes": [
         {
+            "src": "/(.*)",
+            "headers": { "Cross-Origin-Opener-Policy": "same-origin-allow-popups" },
+            "continue": true
+        },
+        {
             "src": "/api/(.*)",
             "dest": "api/server.js"
         },
@@ -22,17 +27,6 @@
         {
             "src": "/(.*)",
             "dest": "api/server.js"
-        }
-    ],
-    "headers": [
-        {
-            "source": "/(.*)",
-            "headers": [
-                {
-                    "key": "Cross-Origin-Opener-Policy",
-                    "value": "same-origin-allow-popups"
-                }
-            ]
         }
     ]
 }
