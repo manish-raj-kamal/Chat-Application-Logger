@@ -1,5 +1,7 @@
 # ChatApp Logger v2.0
 
+We will be using neumorphic design in whole website with some places liquid glass.
+
 A beautiful real-time chat application demonstrating **Queue (FIFO)** data structure with **MongoDB Atlas** persistence, a modern premium UI, and Vercel deployment support.
 
 ## 🚀 Quick Start

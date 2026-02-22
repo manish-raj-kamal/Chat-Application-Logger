@@ -1,0 +1,8 @@
+{
+    "blockedPaths": [
+        ".env",
+        ".env.local",
+        ".env.production",
+        ".env.development"
+    ]
+}

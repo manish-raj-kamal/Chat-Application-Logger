@@ -1,26 +1,45 @@
 const mongoose = require('mongoose');
 
 const chatSchema = new mongoose.Schema({
-  username: {
+  from: {
     type: String,
     required: true,
-    trim: true,
+  },
+  fromName: {
+    type: String,
+    required: true,
+  },
+  fromAvatar: {
+    type: String,
+    default: '',
+  },
+  to: {
+    type: String,
+    required: true,       // 'global' or recipient email
+  },
+  toName: {
+    type: String,
+    default: '',
   },
   content: {
-    type: String,       // Stored as AES-256 encrypted ciphertext
+    type: String,         // AES-256 encrypted ciphertext
     required: true,
+  },
+  chatType: {
+    type: String,
+    enum: ['global', 'private'],
+    default: 'global',
   },
   timestamp: {
     type: Date,
     default: Date.now,
   },
 }, {
-  collection: 'Chats',    // Maps to your existing "Chats" collection
+  collection: 'Chats',
   timestamps: false,
 });
 
-// Indexes for efficient querying
-chatSchema.index({ timestamp: 1 });
-chatSchema.index({ username: 1, timestamp: 1 });
+chatSchema.index({ chatType: 1, timestamp: 1 });
+chatSchema.index({ from: 1, to: 1, timestamp: 1 });
 
 module.exports = mongoose.model('Chat', chatSchema);

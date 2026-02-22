@@ -3,6 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 
 const Chat = require('./models/Message');
 const User = require('./models/User');
@@ -10,7 +12,10 @@ const { encrypt, decrypt } = require('./utils/encryption');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
-const MAX_QUEUE_SIZE = 10; // FIFO queue: keep last 10 messages per user
+const MAX_QUEUE_SIZE = 10;
+const JWT_SECRET = process.env.JWT_SECRET || 'chatapp-jwt-fallback-secret-2026';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Middleware
 app.use(cors());
@@ -24,240 +29,346 @@ if (MONGODB_URI && MONGODB_URI !== 'your_mongodb_atlas_uri_here') {
         .then(() => console.log('✅ Connected to MongoDB Atlas (ChatLogger)'))
         .catch(err => {
             console.error('❌ MongoDB connection error:', err.message);
-            console.log('💡 Check your MONGODB_URI in .env file');
         });
 } else {
-    console.log('⚠️  MONGODB_URI not set — add it to your .env file');
-    console.log('💡 The app will start but messages won\'t persist until MongoDB is configured');
+    console.log('⚠️  MONGODB_URI not set');
 }
 
-// ─── API Routes ───────────────────────────────────────────
-
-// GET /api/messages - Get all messages (decrypted for the client)
-app.get('/api/messages', async (req, res) => {
+// ─── Auth Middleware ──────────────────────────────────────
+function auth(req, res, next) {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
     try {
-        const chats = await Chat.find()
+        const token = header.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+}
+
+// Expose Google Client ID to frontend
+app.get('/api/config', (req, res) => {
+    res.json({ googleClientId: GOOGLE_CLIENT_ID || '' });
+});
+
+// ─── Google Auth ──────────────────────────────────────────
+app.post('/api/auth/google', async (req, res) => {
+    try {
+        const { credential } = req.body;
+        if (!credential) {
+            return res.status(400).json({ error: 'Missing credential' });
+        }
+
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+
+        // Upsert user
+        const user = await User.findOneAndUpdate(
+            { googleId: payload.sub },
+            {
+                googleId: payload.sub,
+                email: payload.email,
+                name: payload.name,
+                avatar: payload.picture || '',
+                lastActive: new Date(),
+            },
+            { upsert: true, new: true }
+        );
+
+        // Create session JWT
+        const token = jwt.sign(
+            {
+                userId: user._id.toString(),
+                email: user.email,
+                name: user.name,
+                avatar: user.avatar,
+            },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            success: true,
+            token,
+            user: {
+                email: user.email,
+                name: user.name,
+                avatar: user.avatar,
+            },
+        });
+    } catch (error) {
+        console.error('Google auth error:', error.message);
+        res.status(401).json({ error: 'Google authentication failed' });
+    }
+});
+
+// ─── Users ────────────────────────────────────────────────
+app.get('/api/users', auth, async (req, res) => {
+    try {
+        const users = await User.find({}, 'email name avatar lastActive').lean();
+        res.json({ users });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+// ─── Messages ─────────────────────────────────────────────
+
+// GET /api/messages?chatType=global|private&with=email&since=timestamp
+app.get('/api/messages', auth, async (req, res) => {
+    try {
+        const { chatType = 'global', with: withUser, since } = req.query;
+        const userEmail = req.user.email;
+
+        let query = {};
+
+        if (chatType === 'global') {
+            query.chatType = 'global';
+        } else if (chatType === 'private' && withUser) {
+            query.chatType = 'private';
+            query.$or = [
+                { from: userEmail, to: withUser },
+                { from: withUser, to: userEmail },
+            ];
+        } else {
+            return res.json({ messages: [] });
+        }
+
+        if (since) {
+            query.timestamp = { $gt: new Date(parseInt(since)) };
+        }
+
+        const chats = await Chat.find(query)
             .sort({ timestamp: 1 })
             .lean();
 
-        // Decrypt messages and group by user
-        const userMap = {};
-        chats.forEach(chat => {
-            if (!userMap[chat.username]) {
-                userMap[chat.username] = [];
-            }
-            userMap[chat.username].push({
-                username: chat.username,
-                content: decrypt(chat.content),  // ← Decrypted for display
-                timestamp: chat.timestamp.getTime(),
-                formatted_time: chat.timestamp.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                }),
-                _id: chat._id,
-            });
-        });
-
-        const users = Object.keys(userMap).map(username => ({
-            username,
-            messages: userMap[username],
+        const messages = chats.map(chat => ({
+            _id: chat._id,
+            from: chat.from,
+            fromName: chat.fromName,
+            fromAvatar: chat.fromAvatar,
+            to: chat.to,
+            toName: chat.toName,
+            content: decrypt(chat.content),
+            chatType: chat.chatType,
+            timestamp: chat.timestamp.getTime(),
         }));
 
-        res.json({ users });
+        res.json({ messages });
     } catch (error) {
         console.error('Error fetching messages:', error);
         res.status(500).json({ error: 'Failed to fetch messages' });
     }
 });
 
-// POST /api/send - Send a message (encrypted before storage)
-app.post('/api/send', async (req, res) => {
+// POST /api/send
+app.post('/api/send', auth, async (req, res) => {
     try {
-        const { username, message } = req.body;
+        const { message, to, chatType = 'global' } = req.body;
+        const userEmail = req.user.email;
+        const userName = req.user.name;
+        const userAvatar = req.user.avatar || '';
 
-        if (!username || !message) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing username or message'
-            });
+        if (!message || !message.trim()) {
+            return res.status(400).json({ error: 'Message is empty' });
         }
 
-        const trimmedUser = username.trim();
-        const trimmedMsg = message.trim();
+        const encryptedContent = encrypt(message.trim());
 
-        // Upsert user in the Users collection
-        await User.findOneAndUpdate(
-            { username: trimmedUser },
-            { $set: { lastActive: new Date() } },
-            { upsert: true, new: true }
-        );
+        let toName = '';
+        let toField = 'global';
 
-        // Encrypt the message content before storing
-        const encryptedContent = encrypt(trimmedMsg);
+        if (chatType === 'private' && to) {
+            const recipient = await User.findOne({ email: to });
+            toName = recipient ? recipient.name : to;
+            toField = to;
+        }
 
-        // Create the new chat message
-        await Chat.create({
-            username: trimmedUser,
-            content: encryptedContent,  // ← Stored encrypted in DB
+        const newChat = await Chat.create({
+            from: userEmail,
+            fromName: userName,
+            fromAvatar: userAvatar,
+            to: toField,
+            toName,
+            content: encryptedContent,
+            chatType,
         });
 
-        // ── FIFO Queue enforcement: keep only last MAX_QUEUE_SIZE per user ──
-        const userMessageCount = await Chat.countDocuments({ username: trimmedUser });
+        // ── FIFO Queue: keep last MAX_QUEUE_SIZE per conversation ──
+        let countQuery;
+        if (chatType === 'global') {
+            countQuery = { chatType: 'global' };
+        } else {
+            countQuery = {
+                chatType: 'private',
+                $or: [
+                    { from: userEmail, to: toField },
+                    { from: toField, to: userEmail },
+                ],
+            };
+        }
 
-        if (userMessageCount > MAX_QUEUE_SIZE) {
-            // Find the oldest messages that exceed the queue limit
-            const excessCount = userMessageCount - MAX_QUEUE_SIZE;
-            const oldestMessages = await Chat.find({ username: trimmedUser })
+        const count = await Chat.countDocuments(countQuery);
+        if (count > MAX_QUEUE_SIZE) {
+            const excess = count - MAX_QUEUE_SIZE;
+            const oldest = await Chat.find(countQuery)
                 .sort({ timestamp: 1 })
-                .limit(excessCount)
+                .limit(excess)
                 .select('_id');
-
-            const idsToDelete = oldestMessages.map(m => m._id);
-            await Chat.deleteMany({ _id: { $in: idsToDelete } });
+            await Chat.deleteMany({ _id: { $in: oldest.map(m => m._id) } });
         }
 
         res.json({
             success: true,
-            message: 'Message sent successfully',
+            message: {
+                _id: newChat._id,
+                from: userEmail,
+                fromName: userName,
+                fromAvatar: userAvatar,
+                to: toField,
+                toName,
+                content: message.trim(),
+                chatType,
+                timestamp: newChat.timestamp.getTime(),
+            },
         });
     } catch (error) {
         console.error('Error sending message:', error);
-        res.status(500).json({ success: false, error: 'Failed to send message' });
+        res.status(500).json({ error: 'Failed to send message' });
     }
 });
 
-// POST /api/clear - Clear all messages
-app.post('/api/clear', async (req, res) => {
+// POST /api/clear
+app.post('/api/clear', auth, async (req, res) => {
     try {
-        await Chat.deleteMany({});
-        res.json({ success: true, message: 'All data cleared successfully' });
+        const { chatType = 'global', with: withUser } = req.body;
+        const userEmail = req.user.email;
+
+        let query;
+        if (chatType === 'global') {
+            query = { chatType: 'global' };
+        } else if (chatType === 'private' && withUser) {
+            query = {
+                chatType: 'private',
+                $or: [
+                    { from: userEmail, to: withUser },
+                    { from: withUser, to: userEmail },
+                ],
+            };
+        } else {
+            return res.status(400).json({ error: 'Invalid clear request' });
+        }
+
+        await Chat.deleteMany(query);
+        res.json({ success: true });
     } catch (error) {
-        console.error('Error clearing data:', error);
-        res.status(500).json({ success: false, error: 'Failed to clear data' });
+        res.status(500).json({ error: 'Failed to clear' });
     }
 });
 
-// GET /api/stats - Get chat statistics
-app.get('/api/stats', async (req, res) => {
+// GET /api/stats
+app.get('/api/stats', auth, async (req, res) => {
     try {
         const totalMessages = await Chat.countDocuments();
-        const users = await Chat.distinct('username');
-        const avgQueueSize = users.length > 0
-            ? Math.round(totalMessages / users.length)
-            : 0;
+        const userCount = await User.countDocuments();
+        const globalCount = await Chat.countDocuments({ chatType: 'global' });
 
         res.json({
             totalMessages,
-            totalUsers: users.length,
-            avgQueueSize,
+            totalUsers: userCount,
+            globalMessages: globalCount,
             maxQueueSize: MAX_QUEUE_SIZE,
         });
     } catch (error) {
-        console.error('Error fetching stats:', error);
         res.status(500).json({ error: 'Failed to fetch stats' });
     }
 });
 
-// GET /api/download/:username - Download last 10 messages for a user as readable text
-app.get('/api/download/:username', async (req, res) => {
+// ─── Download Endpoints ───────────────────────────────────
+
+// Download current chat as readable .txt
+app.get('/api/download', auth, async (req, res) => {
     try {
-        const username = req.params.username;
+        const { chatType = 'global', with: withUser } = req.query;
+        const userEmail = req.user.email;
 
-        const chats = await Chat.find({ username })
-            .sort({ timestamp: 1 })
-            .lean();
+        let query = {};
+        let chatLabel = 'Global Chat';
 
-        if (chats.length === 0) {
-            return res.status(404).json({ error: 'No messages found for this user' });
+        if (chatType === 'global') {
+            query.chatType = 'global';
+        } else if (chatType === 'private' && withUser) {
+            query.chatType = 'private';
+            query.$or = [
+                { from: userEmail, to: withUser },
+                { from: withUser, to: userEmail },
+            ];
+            chatLabel = `DM with ${withUser}`;
         }
 
-        // Build readable text format (decrypted)
-        let text = `════════════════════════════════════════════\n`;
-        text += `  Chat Log for: ${username}\n`;
-        text += `  Downloaded: ${new Date().toLocaleString()}\n`;
-        text += `  Messages: ${chats.length} (last ${MAX_QUEUE_SIZE} in queue)\n`;
-        text += `════════════════════════════════════════════\n\n`;
-
-        chats.forEach((chat, i) => {
-            const time = new Date(chat.timestamp).toLocaleString();
-            const decryptedContent = decrypt(chat.content);
-            text += `[${time}] ${chat.username}:\n`;
-            text += `  ${decryptedContent}\n\n`;
-        });
-
-        text += `════════════════════════════════════════════\n`;
-        text += `  End of Chat Log\n`;
-        text += `════════════════════════════════════════════\n`;
-
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="chat_${username}_${new Date().toISOString().slice(0, 10)}.txt"`);
-        res.send(text);
-    } catch (error) {
-        console.error('Error downloading messages:', error);
-        res.status(500).json({ error: 'Failed to download messages' });
-    }
-});
-
-// GET /api/download-all - Download entire conversation as readable text
-app.get('/api/download-all', async (req, res) => {
-    try {
-        const chats = await Chat.find()
-            .sort({ timestamp: 1 })
-            .lean();
+        const chats = await Chat.find(query).sort({ timestamp: 1 }).lean();
 
         if (chats.length === 0) {
-            return res.status(404).json({ error: 'No messages found' });
+            return res.status(404).json({ error: 'No messages to download' });
         }
 
-        const usernames = [...new Set(chats.map(c => c.username))];
-
-        let text = `════════════════════════════════════════════\n`;
-        text += `  Chat App Logger — Full Conversation\n`;
+        let text = `${'═'.repeat(50)}\n`;
+        text += `  ChatApp Logger — ${chatLabel}\n`;
         text += `  Downloaded: ${new Date().toLocaleString()}\n`;
-        text += `  Participants: ${usernames.join(', ')}\n`;
-        text += `  Total Messages: ${chats.length}\n`;
-        text += `════════════════════════════════════════════\n\n`;
+        text += `  Messages: ${chats.length} (max ${MAX_QUEUE_SIZE} in queue)\n`;
+        text += `  Encryption: AES-256 (decrypted for download)\n`;
+        text += `${'═'.repeat(50)}\n\n`;
 
         chats.forEach(chat => {
             const time = new Date(chat.timestamp).toLocaleString();
-            const decryptedContent = decrypt(chat.content);
-            text += `[${time}] ${chat.username}: ${decryptedContent}\n`;
+            const content = decrypt(chat.content);
+            text += `[${time}] ${chat.fromName}:\n`;
+            text += `  ${content}\n\n`;
         });
 
-        text += `\n════════════════════════════════════════════\n`;
+        text += `${'═'.repeat(50)}\n`;
         text += `  End of Chat Log\n`;
-        text += `════════════════════════════════════════════\n`;
+        text += `${'═'.repeat(50)}\n`;
+
+        const filename = chatType === 'global'
+            ? `global_chat_${new Date().toISOString().slice(0, 10)}.txt`
+            : `dm_${withUser}_${new Date().toISOString().slice(0, 10)}.txt`;
 
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="chat_all_${new Date().toISOString().slice(0, 10)}.txt"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.send(text);
     } catch (error) {
-        console.error('Error downloading messages:', error);
-        res.status(500).json({ error: 'Failed to download messages' });
+        res.status(500).json({ error: 'Download failed' });
     }
 });
 
-// Serve the frontend
+// ─── Serve Frontend ───────────────────────────────────────
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Catch-all for SPA
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-// Start server (only when not on Vercel)
+// ─── Start ────────────────────────────────────────────────
 if (process.env.VERCEL !== '1') {
     app.listen(PORT, () => {
         console.log(`\n🚀 Chat App Logger v2.0`);
-        console.log(`🌐 Server running at: http://localhost:${PORT}`);
+        console.log(`🌐 http://localhost:${PORT}`);
         console.log(`📦 Database: ChatLogger (MongoDB Atlas)`);
-        console.log(`🔒 Message encryption: AES-256`);
-        console.log(`📨 Queue size: ${MAX_QUEUE_SIZE} messages per user`);
+        console.log(`🔒 Encryption: AES-256`);
+        console.log(`🔑 Auth: Google OAuth 2.0`);
+        console.log(`📨 Queue: ${MAX_QUEUE_SIZE} msgs/conversation`);
         console.log(`⚡ Press Ctrl+C to stop\n`);
     });
 }
 
-// Export for Vercel serverless
 module.exports = app;
