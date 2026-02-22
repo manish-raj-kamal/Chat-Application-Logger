@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp Logger — Real-time Chat</title>
+    <meta name="description"
+        content="A beautiful real-time chat application with queue data structure visualization and MongoDB persistence.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-particles" id="loginParticles"></div>
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="logo-icon">
+                    <i class="fas fa-comments"></i>
+                </div>
+                <h1>ChatApp Logger</h1>
+                <p class="login-subtitle">Queue-Based Messaging System</p>
+            </div>
+            <div class="login-form">
+                <div class="input-wrapper">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="loginUsername" placeholder="Enter your name to start chatting..."
+                        autocomplete="off" maxlength="20">
+                </div>
+                <button class="login-btn" id="loginBtn" onclick="handleLogin()">
+                    <span>Start Chatting</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+            <div class="login-features">
+                <div class="feature-tag"><i class="fas fa-bolt"></i> Real-time</div>
+                <div class="feature-tag"><i class="fas fa-database"></i> Persistent</div>
+                <div class="feature-tag"><i class="fas fa-layer-group"></i> FIFO Queue</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Screen -->
+    <div class="chat-screen" id="chatScreen" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <div class="brand-icon"><i class="fas fa-comments"></i></div>
+                    <div>
+                        <h2>Chats</h2>
+                        <span class="online-count" id="onlineCount">0 participants</span>
+                    </div>
+                </div>
+                <button class="sidebar-toggle-btn" id="closeSidebar" onclick="toggleSidebar()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="sidebar-search">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchUsers" placeholder="Search conversations..." oninput="filterUsers()">
+            </div>
+
+            <div class="user-list" id="userList">
+                <div class="empty-sidebar">
+                    <div class="empty-sidebar-icon"><i class="fas fa-user-friends"></i></div>
+                    <p>No conversations yet</p>
+                    <span>Send a message to get started</span>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="current-user-card" id="currentUserCard">
+                    <div class="user-avatar-sm" id="sidebarAvatar">U</div>
+                    <div class="current-user-info">
+                        <span class="current-user-name" id="sidebarUsername">User</span>
+                        <span class="current-user-status">Online</span>
+                    </div>
+                    <button class="logout-btn" onclick="handleLogout()" title="Switch User">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <!-- Chat Header -->
+            <header class="chat-header">
+                <div class="header-left">
+                    <button class="menu-btn" id="menuBtn" onclick="toggleSidebar()">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="chat-room-info">
+                        <div class="room-avatar" id="roomAvatar">
+                            <i class="fas fa-globe"></i>
+                        </div>
+                        <div class="room-details">
+                            <h3 id="roomName">Global Chat Room</h3>
+                            <span class="room-status" id="roomStatus">
+                                <span class="status-dot"></span>
+                                <span id="participantCount">0 participants</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="header-btn" onclick="refreshData()" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="header-btn" onclick="exportData()" title="Export Chat">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="header-btn danger" onclick="clearAllData()" title="Clear All">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                    <button class="header-btn" onclick="toggleQueuePanel()" title="Queue Visualization"
+                        id="queueToggleBtn">
+                        <i class="fas fa-chart-bar"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Messages Area -->
+            <div class="messages-wrapper">
+                <div class="messages-container" id="messagesContainer">
+                    <div class="welcome-state" id="welcomeState">
+                        <div class="welcome-icon">
+                            <i class="fas fa-paper-plane"></i>
+                        </div>
+                        <h2>Welcome to ChatApp Logger</h2>
+                        <p>Messages are stored using a FIFO Queue data structure.<br>Start typing to begin the
+                            conversation!</p>
+                    </div>
+                </div>
+
+                <!-- Scroll to bottom button -->
+                <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollToBottom()"
+                    style="display: none;">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <span class="typing-text">Someone is typing...</span>
+            </div>
+
+            <!-- Message Input -->
+            <div class="input-area">
+                <div class="input-container">
+                    <button class="emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">
+                        <i class="fas fa-smile"></i>
+                    </button>
+                    <div class="input-field-wrapper">
+                        <textarea id="messageInput" placeholder="Type a message..." rows="1"
+                            onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
+                    </div>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+
+                <!-- Emoji Picker -->
+                <div class="emoji-picker" id="emojiPicker" style="display: none;">
+                    <div class="emoji-grid" id="emojiGrid"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Queue Visualization Panel -->
+        <aside class="queue-panel hidden" id="queuePanel">
+            <div class="panel-header">
+                <h3><i class="fas fa-database"></i> Queue Visualization</h3>
+                <button class="close-panel-btn" onclick="toggleQueuePanel()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="panel-body">
+                <!-- Queue Visual -->
+                <div class="queue-section">
+                    <div class="section-label">
+                        <span>Message Queue (FIFO)</span>
+                        <span class="badge" id="queueCount">0</span>
+                    </div>
+                    <div class="queue-visual" id="queueVisual">
+                        <div class="queue-empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <span>Queue Empty</span>
+                        </div>
+                    </div>
+                    <div class="queue-labels">
+                        <span class="queue-label-item"><i class="fas fa-arrow-right"></i> Head (Dequeue)</span>
+                        <span class="queue-label-item">Tail (Enqueue) <i class="fas fa-arrow-left"></i></span>
+                    </div>
+                </div>
+
+                <!-- Operations -->
+                <div class="queue-section">
+                    <div class="section-label"><span>Queue Operations</span></div>
+                    <div class="operations-grid">
+                        <div class="op-card enqueue">
+                            <div class="op-icon"><i class="fas fa-plus-circle"></i></div>
+                            <div class="op-info">
+                                <span class="op-name">Enqueue</span>
+                                <span class="op-desc">Add to tail</span>
+                            </div>
+                        </div>
+                        <div class="op-card dequeue">
+                            <div class="op-icon"><i class="fas fa-minus-circle"></i></div>
+                            <div class="op-info">
+                                <span class="op-name">Dequeue</span>
+                                <span class="op-desc">Remove from head</span>
+                            </div>
+                        </div>
+                        <div class="op-card peek">
+                            <div class="op-icon"><i class="fas fa-eye"></i></div>
+                            <div class="op-info">
+                                <span class="op-name">Peek</span>
+                                <span class="op-desc">View front element</span>
+                            </div>
+                        </div>
+                        <div class="op-card size">
+                            <div class="op-icon"><i class="fas fa-ruler"></i></div>
+                            <div class="op-info">
+                                <span class="op-name">Size</span>
+                                <span class="op-desc">Count elements</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="queue-section">
+                    <div class="section-label"><span>Statistics</span></div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statUsers">0</div>
+                            <div class="stat-label">Active Users</div>
+                            <div class="stat-icon"><i class="fas fa-users"></i></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statMessages">0</div>
+                            <div class="stat-label">Total Messages</div>
+                            <div class="stat-icon"><i class="fas fa-comments"></i></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="statAvgQueue">0</div>
+                            <div class="stat-label">Avg Queue Size</div>
+                            <div class="stat-icon"><i class="fas fa-layer-group"></i></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toastText">Message sent!</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

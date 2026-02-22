@@ -1,0 +1,20 @@
+{
+  "name": "chatapp-logger",
+  "version": "2.0.0",
+  "description": "A beautiful real-time chat application with MongoDB and Queue data structure visualization",
+  "main": "api/server.js",
+  "scripts": {
+    "dev": "node api/server.js",
+    "start": "node api/server.js",
+    "vercel-build": "echo 'Build complete'"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "mongoose": "^8.12.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
