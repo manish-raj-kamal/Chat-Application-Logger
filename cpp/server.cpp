@@ -41,7 +41,7 @@ struct Config {
     std::string encryption_key;
     std::string google_client_id;
     std::string jwt_secret;
-    int port = 8080;
+    int port = 10000;
 };
 
 static Config config;
@@ -78,7 +78,7 @@ void loadConfig() {
     config.encryption_key = env("ENCRYPTION_KEY", "default-key-change-me");
     config.google_client_id = env("GOOGLE_CLIENT_ID");
     config.jwt_secret = env("JWT_SECRET", "default-jwt-secret");
-    config.port = std::stoi(env("PORT", "8080"));
+    config.port = std::stoi(env("PORT", "10000"));
 }
 
 // ── Data Structures ───────────────────────────────────────

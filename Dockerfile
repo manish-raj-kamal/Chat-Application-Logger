@@ -35,5 +35,8 @@ RUN g++ -std=c++17 -O2 \
     $(pkg-config --libs libmongoc-1.0)
 
 
+ENV PORT=10000
+EXPOSE 10000
+
 # Use shell form so stdout is not buffered
 CMD ["./server"]
