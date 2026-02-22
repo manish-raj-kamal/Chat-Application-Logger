@@ -17,7 +17,11 @@ build/
 Thumbs.db
 Desktop.ini
 
-# C++ build artifacts (legacy)
+# Legacy C++ project (not part of Node.js app)
+src/
+web/
+BUILD.bat
+START_WEB.bat
 *.exe
 *.obj
 *.o
