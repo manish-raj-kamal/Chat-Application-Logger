@@ -392,23 +392,36 @@ async function refreshData() {
 }
 
 async function exportData() {
+    // Download current user's last 10 messages as readable text
+    if (!currentUser) {
+        showToast('Please login first');
+        return;
+    }
+
     try {
-        const response = await fetch('/api/messages');
-        const data = await response.json();
-
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chat_export_${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
-        showToast('Chat exported!');
+        const link = document.createElement('a');
+        link.href = `/api/download/${encodeURIComponent(currentUser)}`;
+        link.download = `chat_${currentUser}_${new Date().toISOString().slice(0, 10)}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Downloading your messages!');
     } catch (error) {
-        showToast('Export failed');
+        showToast('Download failed');
+    }
+}
+
+async function downloadAll() {
+    try {
+        const link = document.createElement('a');
+        link.href = '/api/download-all';
+        link.download = `chat_all_${new Date().toISOString().slice(0, 10)}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Downloading full conversation!');
+    } catch (error) {
+        showToast('Download failed');
     }
 }
 

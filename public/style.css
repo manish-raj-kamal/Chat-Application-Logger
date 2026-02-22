@@ -55,13 +55,16 @@
 }
 
 /* ── Reset ─────────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
     height: 100%;
     overflow: hidden;
 }
@@ -75,10 +78,22 @@ body {
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
 
 /* ═══════════════════════════════════════════════════════════
    LOGIN SCREEN
@@ -112,10 +127,23 @@ body {
 }
 
 @keyframes particleFloat {
-    0% { opacity: 0; transform: translateY(100vh) scale(0); }
-    20% { opacity: 0.6; }
-    80% { opacity: 0.3; }
-    100% { opacity: 0; transform: translateY(-20vh) scale(1); }
+    0% {
+        opacity: 0;
+        transform: translateY(100vh) scale(0);
+    }
+
+    20% {
+        opacity: 0.6;
+    }
+
+    80% {
+        opacity: 0.3;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-20vh) scale(1);
+    }
 }
 
 .login-card {
@@ -132,8 +160,15 @@ body {
 }
 
 @keyframes cardEnter {
-    from { opacity: 0; transform: translateY(40px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(40px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .login-logo {
@@ -157,8 +192,15 @@ body {
 }
 
 @keyframes logoPulse {
-    0%, 100% { box-shadow: 0 8px 32px rgba(108, 92, 231, 0.3); }
-    50% { box-shadow: 0 8px 48px rgba(108, 92, 231, 0.5); }
+
+    0%,
+    100% {
+        box-shadow: 0 8px 32px rgba(108, 92, 231, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 8px 48px rgba(108, 92, 231, 0.5);
+    }
 }
 
 .login-logo h1 {
@@ -214,7 +256,7 @@ body {
     box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-.input-wrapper input:focus + i,
+.input-wrapper input:focus+i,
 .input-wrapper:focus-within i {
     color: var(--accent-light);
 }
@@ -650,8 +692,15 @@ body {
 }
 
 @keyframes dotPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
 }
 
 .header-actions {
@@ -692,6 +741,26 @@ body {
     border-color: var(--accent);
 }
 
+.encryption-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: rgba(81, 207, 102, 0.08);
+    border: 1px solid rgba(81, 207, 102, 0.25);
+    border-radius: var(--radius-sm);
+    color: var(--success);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: default;
+    user-select: none;
+}
+
+.encryption-badge i {
+    font-size: 11px;
+}
+
 /* ── Messages Area ─────────────────────────────────────── */
 .messages-wrapper {
     flex: 1;
@@ -708,7 +777,7 @@ body {
     gap: 4px;
 
     /* Subtle chat bg pattern */
-    background-image: 
+    background-image:
         radial-gradient(circle at 20% 50%, rgba(108, 92, 231, 0.03) 0%, transparent 50%),
         radial-gradient(circle at 80% 50%, rgba(162, 155, 254, 0.02) 0%, transparent 50%);
 }
@@ -740,8 +809,15 @@ body {
 }
 
 @keyframes welcomeBounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
 }
 
 .welcome-state h2 {
@@ -791,8 +867,15 @@ body {
 }
 
 @keyframes msgSlideIn {
-    from { opacity: 0; transform: translateY(12px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 .message-row.sent {
@@ -934,13 +1017,31 @@ body {
     animation: typingBounce 1.4s infinite ease-in-out;
 }
 
-.typing-dots span:nth-child(1) { animation-delay: 0s; }
-.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+.typing-dots span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
 @keyframes typingBounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-4px); opacity: 1; }
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.4;
+    }
+
+    30% {
+        transform: translateY(-4px);
+        opacity: 1;
+    }
 }
 
 /* ── Input Area ────────────────────────────────────────── */
@@ -1050,8 +1151,15 @@ body {
 }
 
 @keyframes pickerSlide {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .emoji-grid {
@@ -1186,7 +1294,9 @@ body {
     overflow-x: auto;
 }
 
-.queue-visual::-webkit-scrollbar { height: 4px; }
+.queue-visual::-webkit-scrollbar {
+    height: 4px;
+}
 
 .queue-node {
     min-width: 40px;
@@ -1205,8 +1315,15 @@ body {
 }
 
 @keyframes nodeAppear {
-    from { opacity: 0; transform: scale(0.5); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 .queue-node:first-child {
@@ -1274,10 +1391,21 @@ body {
     font-size: 16px;
 }
 
-.op-card.enqueue .op-icon { color: var(--success); }
-.op-card.dequeue .op-icon { color: var(--danger); }
-.op-card.peek .op-icon { color: var(--accent-light); }
-.op-card.size .op-icon { color: #fdcb6e; }
+.op-card.enqueue .op-icon {
+    color: var(--success);
+}
+
+.op-card.dequeue .op-icon {
+    color: var(--danger);
+}
+
+.op-card.peek .op-icon {
+    color: var(--accent-light);
+}
+
+.op-card.size .op-icon {
+    color: #fdcb6e;
+}
 
 .op-name {
     font-size: 0.8rem;
