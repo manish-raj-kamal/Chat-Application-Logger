@@ -82,9 +82,14 @@ async function initGoogleSignIn() {
         const config = await res.json();
 
         if (!config.googleClientId) {
-            console.warn('Google Client ID not configured');
-            document.querySelector('.login-hint').textContent =
-                'Google Client ID not configured. Add GOOGLE_CLIENT_ID to .env';
+            console.warn('Google Client ID not configured — showing simple login');
+            showSimpleLogin();
+            return;
+        }
+
+        if (typeof google === 'undefined' || !google.accounts) {
+            console.warn('Google GIS library not loaded — showing simple login');
+            showSimpleLogin();
             return;
         }
 
@@ -107,6 +112,52 @@ async function initGoogleSignIn() {
         );
     } catch (e) {
         console.error('Google Sign-In init error:', e);
+        showSimpleLogin();
+    }
+}
+
+function showSimpleLogin() {
+    const container = document.getElementById('googleSignInBtn');
+    container.innerHTML = `
+        <form id="simpleLoginForm" style="display:flex;flex-direction:column;gap:10px;width:280px;">
+            <input type="text" id="simpleUsername" placeholder="Enter your username"
+                   style="padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);
+                   background:rgba(255,255,255,0.06);color:#fff;font-size:15px;outline:none;
+                   text-align:center;" required minlength="2" maxlength="20">
+            <button type="submit"
+                    style="padding:12px;border-radius:12px;border:none;background:var(--accent-gradient);
+                    color:#fff;font-weight:600;font-size:15px;cursor:pointer;">
+                Join Chat
+            </button>
+        </form>
+    `;
+    document.getElementById('simpleLoginForm').onsubmit = handleSimpleLogin;
+    document.querySelector('.login-hint').textContent = 'Enter a username to start chatting';
+}
+
+async function handleSimpleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('simpleUsername').value.trim();
+    if (!username) return;
+
+    try {
+        const res = await fetch('/api/auth/simple', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username }),
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+            authToken = data.token;
+            currentUser = data.user;
+            sessionStorage.setItem('chatapp_token', authToken);
+            sessionStorage.setItem('chatapp_user', JSON.stringify(currentUser));
+            showChatScreen();
+        } else {
+            showToast('Login failed: ' + (data.error || 'Unknown'));
+        }
+    } catch (error) {
+        showToast('Login failed: ' + error.message);
     }
 }
 

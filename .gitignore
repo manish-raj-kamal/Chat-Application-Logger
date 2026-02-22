@@ -17,15 +17,21 @@ build/
 Thumbs.db
 Desktop.ini
 
-# Legacy C++ project (not part of Node.js app)
+# Legacy files
 src/
 web/
-BUILD.bat
 START_WEB.bat
 *.exe
+
+# C++ build output
+server
 *.obj
 *.o
 *.out
+
+# Downloaded header-only libraries (large files)
+include/httplib.h
+include/json.hpp
 
 # Logs
 logs/

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: chatapp-logger
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PORT
+        value: 8080
