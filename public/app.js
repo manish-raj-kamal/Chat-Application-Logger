@@ -252,6 +252,12 @@ async function apiFetch(url, options = {}) {
         showToast('Session expired. Please login again.');
         throw new Error('Unauthorized');
     }
+    if (!res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error(`Server error ${res.status}: ${res.statusText}`);
+        }
+    }
     return res;
 }
 
