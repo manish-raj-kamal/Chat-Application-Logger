@@ -34,7 +34,6 @@ RUN g++ -std=c++17 -O2 \
     -lssl -lcrypto -lpthread \
     $(pkg-config --libs libmongoc-1.0)
 
-EXPOSE 8080
 
 # Use shell form so stdout is not buffered
 CMD ["./server"]
