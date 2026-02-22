@@ -33,7 +33,27 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const MONGODB_URI = process.env.MONGODB_URI;
 if (MONGODB_URI && MONGODB_URI !== 'your_mongodb_atlas_uri_here') {
     mongoose.connect(MONGODB_URI, { dbName: 'ChatLogger' })
-        .then(() => console.log('✅ Connected to MongoDB Atlas (ChatLogger)'))
+        .then(async () => {
+            console.log('✅ Connected to MongoDB Atlas (ChatLogger)');
+
+            // Drop legacy indexes from old schema (username_1 etc.)
+            try {
+                const usersCollection = mongoose.connection.db.collection('Users');
+                const indexes = await usersCollection.indexes();
+                const legacyIndexes = indexes.filter(idx =>
+                    idx.key && idx.key.username !== undefined && idx.name !== '_id_'
+                );
+                for (const idx of legacyIndexes) {
+                    await usersCollection.dropIndex(idx.name);
+                    console.log(`🧹 Dropped legacy index: ${idx.name}`);
+                }
+            } catch (e) {
+                // Index might not exist, that's fine
+                if (!e.message.includes('not found')) {
+                    console.log('Index cleanup note:', e.message);
+                }
+            }
+        })
         .catch(err => {
             console.error('❌ MongoDB connection error:', err.message);
         });
