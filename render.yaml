@@ -1,13 +1,10 @@
 services:
   - type: web
     name: chatapp-logger
-    runtime: node
-    buildCommand: npm install
-    startCommand: node api/server.js
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
     envVars:
-      - key: NODE_VERSION
-        value: "18"
       - key: MONGODB_URI
         sync: false
       - key: ENCRYPTION_KEY

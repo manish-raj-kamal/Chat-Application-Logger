@@ -23,7 +23,6 @@ RUN mkdir -p include && \
 # Copy source code
 COPY cpp/ cpp/
 COPY public/ public/
-COPY .env.example .env.example
 
 # Build C++ server (full mode: MongoDB + OpenSSL)
 RUN g++ -std=c++17 -O2 \
@@ -37,4 +36,5 @@ RUN g++ -std=c++17 -O2 \
 
 EXPOSE 8080
 
+# Use shell form so stdout is not buffered
 CMD ["./server"]

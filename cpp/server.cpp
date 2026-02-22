@@ -162,10 +162,40 @@ bool mongoConnect() {
 }
 
 json mongoBsonToJson(const bson_t* doc) {
-    char* str = bson_as_relaxed_extended_json(doc, NULL);
+    char* str = bson_as_canonical_extended_json(doc, NULL);
     json j = json::parse(str, nullptr, false);
     bson_free(str);
     return j;
+}
+
+// Safely extract timestamp (ms) from various MongoDB date formats
+int64_t extractTimestamp(const json& d) {
+    try {
+        if (!d.contains("timestamp")) return nowMs();
+        auto& ts = d["timestamp"];
+        // Canonical: {"$date": {"$numberLong": "123456"}}
+        if (ts.contains("$date")) {
+            auto& dt = ts["$date"];
+            if (dt.is_object() && dt.contains("$numberLong"))
+                return std::stoll(dt["$numberLong"].get<std::string>());
+            if (dt.is_string()) return nowMs(); // ISO string, skip parsing
+            if (dt.is_number()) return dt.get<int64_t>();
+        }
+        if (ts.is_number()) return ts.get<int64_t>();
+    } catch (...) {}
+    return nowMs();
+}
+
+// Safely extract string _id from BSON ObjectId or string
+std::string extractId(const json& d) {
+    try {
+        if (!d.contains("_id")) return genId();
+        auto& id = d["_id"];
+        if (id.is_string()) return id.get<std::string>();
+        if (id.is_object() && id.contains("$oid")) return id["$oid"].get<std::string>();
+        return id.dump();
+    } catch (...) {}
+    return genId();
 }
 
 bson_t* mongoJsonToBson(const std::string& jsonStr) {
@@ -434,9 +464,13 @@ json verify_jwt(const std::string& token, const std::string& secret) {
 
 // ── Auth Middleware ────────────────────────────────────────
 json extractUser(const Request& req) {
-    std::string auth = req.get_header_value("Authorization");
-    if (auth.substr(0, 7) != "Bearer ") return nullptr;
-    return verify_jwt(auth.substr(7), config.jwt_secret);
+    try {
+        std::string auth = req.get_header_value("Authorization");
+        if (auth.size() < 8 || auth.substr(0, 7) != "Bearer ") return nullptr;
+        return verify_jwt(auth.substr(7), config.jwt_secret);
+    } catch (...) {
+        return nullptr;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -463,8 +497,21 @@ json verifyGoogleToken(const std::string& idToken) {
 // ═══════════════════════════════════════════════════════════
 
 int main() {
+    // Disable stdout/stderr buffering for Docker (Render needs to see logs)
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    std::cout << "Starting ChatApp Logger C++ server..." << std::endl;
+
     loadEnvFile();
     loadConfig();
+
+    std::cout << "Config loaded. Port=" << config.port
+              << " MongoDB=" << (!config.mongodb_uri.empty() ? "configured" : "not set")
+              << " Google=" << (!config.google_client_id.empty() ? "configured" : "not set")
+              << std::endl;
 
     Server svr;
 
@@ -488,6 +535,11 @@ int main() {
     svr.set_mount_point("/", "./public");
 
     // ═══════ API ROUTES ═══════════════════════════════════
+
+    // Health check for Render
+    svr.Get("/healthz", [](const Request&, Response& res) {
+        res.set_content(R"({"status":"ok"})", "application/json");
+    });
 
     // GET /api/config
     svr.Get("/api/config", [](const Request&, Response& res) {
@@ -571,6 +623,7 @@ int main() {
 
     // GET /api/users
     svr.Get("/api/users", [](const Request& req, Response& res) {
+      try {
         json user = extractUser(req);
         if (user.is_null()) { res.status = 401; res.set_content(R"({"error":"Unauthorized"})", "application/json"); return; }
 
@@ -590,10 +643,16 @@ int main() {
         }
 #endif
         res.set_content(json({{"users", userList}}).dump(), "application/json");
+      } catch (const std::exception& e) {
+        std::cerr << "GET /api/users error: " << e.what() << std::endl;
+        res.status = 500;
+        res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+      }
     });
 
     // GET /api/messages
     svr.Get("/api/messages", [](const Request& req, Response& res) {
+      try {
         json user = extractUser(req);
         if (user.is_null()) { res.status = 401; res.set_content(R"({"error":"Unauthorized"})", "application/json"); return; }
 
@@ -602,7 +661,8 @@ int main() {
         std::string withUser = req.get_param_value("with");
         std::string since = req.get_param_value("since");
         std::string email = user["email"];
-        int64_t sinceTs = since.empty() ? 0 : std::stoll(since);
+        int64_t sinceTs = 0;
+        try { if (!since.empty()) sinceTs = std::stoll(since); } catch (...) {}
 
         json messages = json::array();
 
@@ -611,25 +671,28 @@ int main() {
         if (chatType == "global") {
             query = {{"chatType", "global"}};
         } else if (chatType == "private" && !withUser.empty()) {
-            query = {{"chatType", "private"}, {"$or", {{{"from", email}, {"to", withUser}}, {{"from", withUser}, {"to", email}}}}};
+            query = {{"chatType", "private"}, {"$or", {{{{"from", email}, {"to", withUser}}, {{"from", withUser}, {"to", email}}}}}};
         }
-        if (sinceTs > 0) {
-            query["timestamp"] = {{"$gt", {{"$date", {{"$numberLong", std::to_string(sinceTs)}}}}}};
-        }
+        // Note: timestamp filtering with $gt and $date is complex in extended JSON.
+        // We filter client-side for simplicity and reliability.
         auto docs = mongoFindChats(query);
         for (auto& d : docs) {
-            std::string content = d.value("content", "");
-            messages.push_back({
-                {"_id", d.contains("_id") ? d["_id"].dump() : genId()},
-                {"from", d.value("from", "")}, {"fromName", d.value("fromName", "")},
-                {"fromAvatar", d.value("fromAvatar", "")}, {"to", d.value("to", "")},
-                {"toName", d.value("toName", "")},
-                {"content", aes_decrypt(content, config.encryption_key)},
-                {"chatType", d.value("chatType", "global")},
-                {"timestamp", d.contains("timestamp") && d["timestamp"].contains("$date")
-                    ? std::stoll(d["timestamp"]["$date"].get<std::string>().substr(0, 13))
-                    : nowMs()}
-            });
+            try {
+                int64_t ts = extractTimestamp(d);
+                if (sinceTs > 0 && ts <= sinceTs) continue;
+                std::string content = d.value("content", "");
+                messages.push_back({
+                    {"_id", extractId(d)},
+                    {"from", d.value("from", "")}, {"fromName", d.value("fromName", "")},
+                    {"fromAvatar", d.value("fromAvatar", "")}, {"to", d.value("to", "")},
+                    {"toName", d.value("toName", "")},
+                    {"content", aes_decrypt(content, config.encryption_key)},
+                    {"chatType", d.value("chatType", "global")},
+                    {"timestamp", ts}
+                });
+            } catch (const std::exception& e) {
+                std::cerr << "Skipping bad message doc: " << e.what() << std::endl;
+            }
         }
 #else
         std::lock_guard<std::mutex> lock(dataMutex);
@@ -645,6 +708,11 @@ int main() {
         }
 #endif
         res.set_content(json({{"messages", messages}}).dump(), "application/json");
+      } catch (const std::exception& e) {
+        std::cerr << "GET /api/messages error: " << e.what() << std::endl;
+        res.status = 500;
+        res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+      }
     });
 
     // POST /api/send
@@ -765,8 +833,16 @@ int main() {
         res.set_content(out.str(), "text/plain");
     });
 
-    // ── Fallback: serve index.html for SPA routing ────────
-    svr.set_error_handler([](const Request&, Response& res) {
+    // ── Fallback: serve index.html ONLY for non-API 404s ──
+    svr.set_error_handler([](const Request& req, Response& res) {
+        // Don't serve HTML for API routes — return JSON errors
+        std::string path = req.path;
+        if (path.substr(0, 4) == "/api") {
+            if (res.status == 404) {
+                res.set_content(R"({"error":"Not found"})", "application/json");
+            }
+            return;
+        }
         if (res.status == 404) {
             std::ifstream f("./public/index.html");
             if (f.is_open()) {
@@ -780,11 +856,19 @@ int main() {
     // ── Connect to MongoDB ────────────────────────────────
 #ifdef USE_MONGODB
     if (!config.mongodb_uri.empty()) {
-        if (mongoConnect()) {
-            std::cout << "✅ Connected to MongoDB Atlas (ChatLogger)" << std::endl;
-        } else {
-            std::cerr << "❌ MongoDB connection failed" << std::endl;
+        try {
+            if (mongoConnect()) {
+                std::cout << "✅ Connected to MongoDB Atlas (ChatLogger)" << std::endl;
+            } else {
+                std::cerr << "❌ MongoDB connection failed — running without DB" << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "❌ MongoDB exception: " << e.what() << " — running without DB" << std::endl;
+        } catch (...) {
+            std::cerr << "❌ MongoDB unknown error — running without DB" << std::endl;
         }
+    } else {
+        std::cout << "⚠️  MONGODB_URI not set — running in-memory mode" << std::endl;
     }
 #endif
 
@@ -804,8 +888,12 @@ int main() {
 #endif
     std::cout << "📨 Queue: 10 msgs visualization" << std::endl;
     std::cout << "⚡ Press Ctrl+C to stop\n" << std::endl;
+    std::cout << std::flush;
 
-    svr.listen("0.0.0.0", config.port);
+    if (!svr.listen("0.0.0.0", config.port)) {
+        std::cerr << "❌ Failed to bind to 0.0.0.0:" << config.port << std::endl;
+        return 1;
+    }
 
 #ifdef USE_MONGODB
     if (mongoClient) {
