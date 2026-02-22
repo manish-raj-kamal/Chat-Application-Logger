@@ -112,6 +112,7 @@ async function initGoogleSignIn() {
 
 async function handleGoogleResponse(response) {
     try {
+        console.log('Google credential received, sending to server...');
         const res = await fetch('/api/auth/google', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -119,6 +120,7 @@ async function handleGoogleResponse(response) {
         });
 
         const data = await res.json();
+        console.log('Server auth response:', res.status, data);
 
         if (data.success && data.token) {
             authToken = data.token;
@@ -127,11 +129,12 @@ async function handleGoogleResponse(response) {
             sessionStorage.setItem('chatapp_user', JSON.stringify(currentUser));
             showChatScreen();
         } else {
-            showToast('Authentication failed');
+            showToast('Auth failed: ' + (data.error || 'Unknown error'));
+            console.error('Auth failed:', data);
         }
     } catch (error) {
         console.error('Auth error:', error);
-        showToast('Login failed. Please try again.');
+        showToast('Login failed: ' + error.message);
     }
 }
 

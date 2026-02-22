@@ -20,6 +20,13 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Required for Google Identity Services popup flow
+app.use((req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    next();
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Connect to MongoDB (database: ChatLogger)
@@ -60,14 +67,23 @@ app.post('/api/auth/google', async (req, res) => {
     try {
         const { credential } = req.body;
         if (!credential) {
+            console.error('Auth: No credential in request body');
             return res.status(400).json({ error: 'Missing credential' });
         }
+
+        if (!GOOGLE_CLIENT_ID) {
+            console.error('Auth: GOOGLE_CLIENT_ID env var is not set');
+            return res.status(500).json({ error: 'Server misconfigured: missing GOOGLE_CLIENT_ID' });
+        }
+
+        console.log('Auth: Verifying Google token (audience:', GOOGLE_CLIENT_ID.slice(0, 15) + '...)');
 
         const ticket = await googleClient.verifyIdToken({
             idToken: credential,
             audience: GOOGLE_CLIENT_ID,
         });
         const payload = ticket.getPayload();
+        console.log('Auth: Token verified for', payload.email);
 
         // Upsert user
         const user = await User.findOneAndUpdate(
@@ -105,7 +121,8 @@ app.post('/api/auth/google', async (req, res) => {
         });
     } catch (error) {
         console.error('Google auth error:', error.message);
-        res.status(401).json({ error: 'Google authentication failed' });
+        console.error('Full error:', error);
+        res.status(401).json({ error: 'Google authentication failed: ' + error.message });
     }
 });
 
